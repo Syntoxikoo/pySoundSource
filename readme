@@ -1,0 +1,29 @@
+# Phase Simulation
+
+A Python-based simulation tool for analyzing and visualizing phase-related data and signals.
+
+## Overview
+
+This project provides tools for simulating phase relationships, visualizing input and output signals, and generating publication-quality visualizations of time-series data. It uses a combination of Matplotlib and Plotly to create both static and interactive visualizations.
+
+## Features
+
+- Signal visualization with customizable plotting options
+- Timeline generation for sequential data visualization
+- Stacked image plotting for comparing multiple datasets
+- Interactive graph generation using Plotly
+- Support for saving visualizations in various formats
+
+## Installation
+
+### Prerequisites
+
+- Python 3.7+
+- pip (Python package installer)
+
+### Dependencies
+
+Install the required dependencies:
+
+```bash
+pip install numpy matplotlib plotly mpld3

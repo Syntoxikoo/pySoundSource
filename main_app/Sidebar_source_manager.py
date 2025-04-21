@@ -1,0 +1,157 @@
+# This script contain the front end of the side bar aswell as the back end of the class sources manager
+from shiny import App, reactive, render, ui
+from shinywidgets import output_widget, render_widget
+from Tools.SourcesManager import SourcesManager
+from Tools.SpatialObject import SpatialObject
+import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+
+
+fs = 44100
+grid_resolution = 1000
+n_fft = 128
+data_m = np.zeros((grid_resolution**2, n_fft))
+
+
+app_ui = ui.page_fluid(
+    ui.layout_sidebar(
+        ui.sidebar(
+            ui.input_numeric("x_length", "Width", value=10, min=1, max=100),
+            ui.input_numeric("y_length", "Length", value=10, min=1, max=100),
+            ui.input_numeric("target_freq", "Frequency", value=1000, min=20, max=20000),
+            ui.card(
+                ui.card_header("Source settings"),
+                ui.input_numeric("radius", "Radius (m)", 0.1, min=0.01, max=1),
+                ui.input_numeric(
+                    "orientation", "Orientation (deg)", 0.0, min=0.0, max=360
+                ),
+                ui.input_select(
+                    "sel_dir",
+                    "Directivity",
+                    ["monopole", "cardioid", "bessel"],
+                    selected="monopole",
+                ),
+                ui.layout_column_wrap(
+                    ui.input_slider("posX", "x (m)", value=0, min=-10 / 2, max=10 / 2),
+                    ui.input_slider("posY", "y (m)", value=0, min=-10 / 2, max=10 / 2),
+                    width=1 / 2,
+                ),
+            ),
+            ui.card(
+                ui.input_action_button("create_instance", "New instance"),
+                ui.card_header("Data Frame as table"),
+                ui.output_table("instance_table"),
+            ),
+        ),
+        ui.card(
+            ui.card_header("display field"),
+            ui.output_plot("plot_field"),
+        ),
+    ),
+    class_="p-3",
+)
+
+
+def server(input, output, session):
+
+    Src_inst = SourcesManager()
+
+    New_inst = reactive.Value(0)
+
+    @reactive.calc()
+    def define_grid():
+        x = np.linspace(-input.x_length() / 2, input.x_length() / 2, grid_resolution)
+        y = np.linspace(-input.y_length() / 2, input.y_length() / 2, grid_resolution)
+        X, Y = np.meshgrid(x, y)
+        return X, Y
+
+    @reactive.effect()
+    @reactive.event(input.create_instance)
+    def _():
+        X, Y = define_grid()
+        Src_inst.create_instance(
+            f"{input.sel_dir()[0].upper()}_{New_inst.get()}",
+            SpatialObject,
+            fs=fs,
+            dist_v=0,
+            norm_s="cartesian",
+            data_m=data_m,
+            radius=input.radius(),
+            position_v=[input.posX(), input.posY(), 0],
+            orientation_v=[input.orientation(), 0],
+            azim_v=X.flatten(),
+            elev_v=Y.flatten(),
+            directivity=input.sel_dir(),
+            src_resp=1.0,
+        )
+
+        New_inst.set(New_inst() + 1)
+
+    @reactive.calc()
+    def compute_field():
+        New_inst()
+        instances = Src_inst.get_instances(Src_inst.list_instances())
+        print(instances)
+        Src_datas = [
+            hp.compute_response(freq=input.target_freq(), reshape=True)
+            for hp in instances
+        ]
+        data = sum(Src_datas)
+
+        return data
+
+    @render.plot()
+    @reactive.event(input.create_instance)
+    def plot_field():
+        data = compute_field()
+        X, Y = define_grid()
+        fig, ax = plt.subplots()
+        ax.contourf(
+            X,
+            Y,
+            SpatialObject._Lp(data),
+            cmap="viridis",
+        )
+        return fig
+
+    @render.table
+    def instance_table():
+        New_inst()
+        if len(Src_inst.list_instances()) > 0:
+            df = pd.DataFrame(
+                [
+                    {
+                        "ID": _id,
+                        "X": Src_inst.get_instance(_id).position_v[0],
+                        "Y": Src_inst.get_instance(_id).position_v[1],
+                    }
+                    for _id in Src_inst.list_instances()
+                ]
+            )
+
+        else:
+            df = pd.DataFrame(columns=["ID", "X", "Y"])
+        return df
+
+
+app = App(app_ui, server)
+
+
+# plotly graph
+# @render_widget()
+# def plot_field():
+#     New_inst()
+#     if len(Src_inst.list_instances()) == 0:
+#         X, Y = define_grid()
+
+#         fig = go.Figure(
+#             data=go.Contour(z=np.zeros_like(X), x=np.unique(X), y=np.unique(Y))
+#         )
+#         return fig
+#     data = compute_field()
+#     X, Y = define_grid()
+#     fig = go.Figure(data=go.Contour(z=SpatialObject._Lp(data), x=X, y=Y))
+#     return fig
+# output_widget("plot_field"),
