@@ -24,7 +24,7 @@ font_scheme = {
 }
 ppi = 96
 
-matplotlib_template = go.layout.Template(
+ECS_template = go.layout.Template(
     layout=go.Layout(
         colorway=colors_scheme,
         paper_bgcolor="white",
@@ -37,6 +37,10 @@ matplotlib_template = go.layout.Template(
             showarrow=True,
             arrowhead=5,
             arrowsize=0.5,
+        ),
+        hoverlabel=dict(
+            font=font_scheme["axes"]["tick_font"] | {"color": "white"},
+            bgcolor="#555555",
         ),
         xaxis=dict(
             title=dict(font=font_scheme["axes"]["title_font"]),
@@ -88,7 +92,47 @@ matplotlib_template = go.layout.Template(
             font=font_scheme["legend"],
         ),
     ),
+    data=dict(
+        contour=[
+            go.Contour(
+                colorscale="Electric",
+                hovertemplate="SPL: %{z:.2f} dB<extra></extra>",
+                contours=dict(
+                    showlabels=True,
+                    labelfont=font_scheme["annotations"] | {"color": "white"},
+                    coloring="heatmap",  # or "lines" or "fill"
+                ),
+                colorbar=dict(
+                    title=dict(
+                        text="",  # Default empty title
+                        font=font_scheme["axes"]["title_font"],
+                        side="right",
+                    ),
+                    thickness=20,
+                    len=0.9,
+                    x=1.02,
+                    xanchor="left",
+                    y=0.5,
+                    yanchor="middle",
+                    outlinewidth=1,
+                    outlinecolor="black",
+                    tickfont=font_scheme["axes"]["tick_font"],
+                    ticklabelposition="outside",
+                ),
+                ncontours=10,
+                showscale=True,
+                line_smoothing=0.85,
+                line=dict(
+                    width=0.5,
+                    color="black",
+                ),
+            ),
+        ],
+        scatter=[
+            go.Scatter(marker=dict(symbol="circle", color="black", size=10)),
+        ],
+    ),
 )
 
-pio.templates["matplotlib"] = matplotlib_template
-pio.templates.default = "matplotlib"
+pio.templates["ECS"] = ECS_template
+pio.templates.default = "ECS"

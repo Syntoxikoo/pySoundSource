@@ -4,13 +4,15 @@ from shinywidgets import output_widget, render_widget
 from Tools.SourcesManager import SourcesManager
 from Tools.SpatialObject import SpatialObject
 import plotly.graph_objects as go
-import matplotlib.pyplot as plt
+import plotly.io as pio
 import pandas as pd
+import Tools.graphing.mpl_template
 import numpy as np
 
+pio.templates.default = "ECS"
 
 fs = 44100
-grid_resolution = 1000
+grid_resolution = 100
 n_fft = 128
 data_m = np.zeros((grid_resolution**2, n_fft))
 
@@ -45,10 +47,8 @@ app_ui = ui.page_fluid(
                 ui.output_table("instance_table"),
             ),
         ),
-        ui.card(
-            ui.card_header("display field"),
-            ui.output_plot("plot_field"),
-        ),
+        # Main Card
+        ui.card(ui.card_header("display field"), output_widget("plot_field")),
     ),
     class_="p-3",
 )
@@ -65,12 +65,12 @@ def server(input, output, session):
         x = np.linspace(-input.x_length() / 2, input.x_length() / 2, grid_resolution)
         y = np.linspace(-input.y_length() / 2, input.y_length() / 2, grid_resolution)
         X, Y = np.meshgrid(x, y)
-        return X, Y
+        return X, Y, x, y
 
     @reactive.effect()
     @reactive.event(input.create_instance)
     def _():
-        X, Y = define_grid()
+        X, Y, _, _ = define_grid()
         Src_inst.create_instance(
             f"{input.sel_dir()[0].upper()}_{New_inst.get()}",
             SpatialObject,
@@ -90,6 +90,26 @@ def server(input, output, session):
         New_inst.set(New_inst() + 1)
 
     @reactive.calc()
+    def get_source_info():
+        New_inst()
+        x = [
+            Src_inst.get_instance(_id).position_v[0]
+            for _id in Src_inst.list_instances()
+        ]
+        y = [
+            Src_inst.get_instance(_id).position_v[1]
+            for _id in Src_inst.list_instances()
+        ]
+        SrcArgs = [
+            Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
+        ]
+        Infos = [
+            f"ID: {SrcArgs[ii]["ID"]} <br>Dir: {SrcArgs[ii]["directivity"]} <br>G: {SrcArgs[ii]["gain"]} <br>Deg: {SrcArgs[ii]["orientation"]}"
+            for ii in range(len(SrcArgs))
+        ]
+        return x, y, Infos
+
+    @reactive.calc()
     def compute_field():
         New_inst()
         instances = Src_inst.get_instances(Src_inst.list_instances())
@@ -102,19 +122,29 @@ def server(input, output, session):
 
         return data
 
-    @render.plot()
+    @render_widget
     @reactive.event(input.create_instance)
     def plot_field():
         data = compute_field()
-        X, Y = define_grid()
-        fig, ax = plt.subplots()
-        ax.contourf(
-            X,
-            Y,
-            SpatialObject._Lp(data),
-            cmap="viridis",
+        _, _, x, y = define_grid()
+        # Once the plotting will be clean -> function to do contour plot inside graphing.py
+
+        fig = go.Figure(
+            data=go.Contour(
+                z=SpatialObject._Lp(data),
+                x=x,
+                y=y,
+                colorbar=dict(title=dict(text=r"Pressure level (dB re 2e-5 Pa)")),
+            )
         )
-        return fig
+        xS, yS, Infos = get_source_info()
+
+        fig.add_trace(
+            go.Scatter(x=xS, y=yS, hovertext=Infos, hoverinfo="text", mode="markers")
+        )  # Should change using reactive value instead
+        # Params to twick : labelfont(color), coloring("heatmap","lines","fill"), .. colorscale
+        widget = go.FigureWidget(fig.data, fig.layout)
+        return widget
 
     @render.table
     def instance_table():
