@@ -440,6 +440,7 @@ class SpatialObject:
         self.data_m /= dist[:, None] * 4 * np.pi
         self.resp_computed = True
 
+        # Maybe there is no point to compute the response to a signal in all dir, especially in free field
         if isinstance(sig, (np.ndarray, list)):
             if noise:
                 # mean the noise
@@ -464,6 +465,54 @@ class SpatialObject:
                 return self.data_m[:, idx_freq]
         else:
             return
+
+    def compute_responsef(self, hp_grid=None, freq: float = 1000, **kwargs):
+        """
+        Compute the response of the source on the grid for a specific frequency bin.
+
+        TODO:
+            add a way to compute a real pressure by shaping the data with LEM, (computing the velocity of the speaker)
+        Args:
+            hp_grid: Grid object
+                instance of grid containing the field points.
+            freq: float
+                if not none give the data for only one given frequency
+
+        Returns:
+            pressure: pressure of the loudspeaker
+
+        Exemple:
+
+        """
+        if hp_grid is None:
+            hp_grid = self.get_grid("cartesian")
+
+        # TODO: Add if computed
+
+        if self.src_domain == "time":
+            print("Compute response: Convert time to freq")
+            self.time2freq()
+
+        # TODO: add src resp
+
+        rel_pos = hp_grid.coords_m - np.asarray(self.position_v)
+        dist = np.linalg.norm(rel_pos, axis=1)
+        delay = dist / self.c
+
+        nb_dir, nb_freq = self.data_m.shape
+        omega = 2 * np.pi * freq
+        self.data_m = self.data_m.astype(complex)
+
+        phase = -1j * omega * delay[:, None]
+        self.data_m *= 1j * self.rho * np.exp(phase)
+        self.data_m /= dist[:, None] * 4 * np.pi
+        self.resp_computed = True
+
+        pass
+
+    def compute_responseM(self):
+
+        pass
 
     def enclosure(self, TL=None, dB=True, **kwargs):
         """
