@@ -5,6 +5,8 @@ from scipy.interpolate import interp1d
 import sys
 from Tools import sig_proc_tools as spt
 from Tools import space_tools as st
+from time import time
+from scipy import ndimage
 
 
 class SpatialObject:
@@ -128,6 +130,8 @@ class SpatialObject:
         self.radius = radius
         self.directed = False
         self.resp_computed = False
+        self.Q = None
+        self.respF = None
 
     @staticmethod
     def _Lp(data):
@@ -142,6 +146,31 @@ class SpatialObject:
         idx_x = np.argmin(np.abs(x - Mx))
         idx_y = np.argmin(np.abs(y - My))
         return data[idx_x, idx_y]
+
+    def freq_range(self, fmin, fmax):
+        pass
+
+    def _Sresp(self, freq=None):
+        """
+        TODO : still not sure if should put the freq or the frequency bin
+        """
+        if self.Q is not None:
+            if self.src_domain == "time":
+                print("SpatObj: _Sresp: Convert time to freq")
+                self.time2freq()
+            if freq is not None:
+                Sresp = (
+                    1j
+                    * self.rho
+                    * (2 * np.pi * freq)
+                    * self.Q[np.argmin(np.abs(self.xaxis_v - freq))]
+                )
+            else:
+                Sresp = 1j * self.rho * (2 * np.pi * self.xaxis_v) * self.Q
+
+            return Sresp
+        else:
+            return 1.0
 
     def update_xaxis(self):
         """
@@ -276,8 +305,8 @@ class SpatialObject:
         This function sets the directivity of the loudspeaker
         it chooses the directivity method to apply
 
-        ### INPUTS
-        - method: directivity method ('cardioid', 'bessel', 'monopole')
+        Args:
+            method: directivity method ('cardioid', 'bessel', 'monopole')
 
         """
 
@@ -289,7 +318,7 @@ class SpatialObject:
             if self.src_domain == "time":
                 self.time2freq()
                 self.src_domain = "freq"
-            self.data_m = np.ones_like(self.data_m)
+            self.pattern = np.ones_like(self.data_m)
             self.directed = True
         else:
             print("set_directivity: Unknown method %s" % method)
@@ -314,9 +343,8 @@ class SpatialObject:
         hp_grid.convert_coordinates("cartesian")
         if self.src_domain == "time":
             self.time2freq()
-        pattern = (1.0 + hp_grid.coords_m @ xy_trg_v) / 2
-        self.data_m = np.zeros(self.data_m.shape)
-        self.data_m = np.tile(pattern[:, np.newaxis], (1, self.data_m.shape[1]))
+        pattern_t = (1.0 + hp_grid.coords_m @ xy_trg_v) / 2
+        self.pattern = np.tile(pattern_t[:, np.newaxis], (1, self.data_m.shape[1]))
         self.directed = True
         return
 
@@ -340,7 +368,7 @@ class SpatialObject:
                 * self.radius
                 * np.sin(angle[:, None].repeat(self.xaxis_v.shape[0], axis=1))
             )
-            self.data_m = (2 * ssp.j1(tmp_m + 1e-9) / (tmp_m + 1e-9)) * 2
+            self.pattern = (2 * ssp.j1(tmp_m + 1e-9) / (tmp_m + 1e-9)) * 2
             self.directed = True
             return
         else:
@@ -364,7 +392,7 @@ class SpatialObject:
                 * self.radius
                 * np.sin(angles_v[:, None].repeat(self.xaxis_v.shape[0], axis=1))
             )
-            self.data_m = (2 * ssp.j1(tmp_m + 1e-6) / (tmp_m + 1e-6)) * 2
+            self.pattern = (2 * ssp.j1(tmp_m + 1e-6) / (tmp_m + 1e-6)) * 2
             self.directed = True
         return
 
@@ -396,7 +424,6 @@ class SpatialObject:
         kwargs.setdefault("fast", False)
         noise = kwargs["noise"]
         fast = kwargs["fast"]
-
         if hp_grid is None:
             hp_grid = self.get_grid("cartesian")
 
@@ -416,8 +443,6 @@ class SpatialObject:
         if self.src_domain == "time":
             print("Compute response: Convert time to freq")
             self.time2freq()
-        if self.src_resp != 1.0:
-            self.data_m *= self.src_resp  # mult by vol vel Q = pi * a**2 * U
 
         rel_pos = hp_grid.coords_m - np.asarray(
             self.position_v
@@ -431,7 +456,7 @@ class SpatialObject:
         nb_dir, nb_freq = self.data_m.shape
         freqs_v = self.xaxis_v
         omega_v = 2 * np.pi * freqs_v
-        self.data_m = self.data_m.astype(complex)
+        self.data_m = self._Sresp() * self.data_m.astype(complex)
         if fast:
             k = omega_v / self.c
             return k, dist, self.data_m
@@ -466,7 +491,7 @@ class SpatialObject:
         else:
             return
 
-    def compute_responsef(self, hp_grid=None, freq: float = 1000, **kwargs):
+    def resp_for_f(self, hp_grid=None, freq: float = 1000, reshape=True):
         """
         Compute the response of the source on the grid for a specific frequency bin.
 
@@ -479,39 +504,45 @@ class SpatialObject:
                 if not none give the data for only one given frequency
 
         Returns:
-            pressure: pressure of the loudspeaker
+            pressure: pressure of the loudspeaker for 1 frequency bin
 
         Exemple:
 
         """
+        start = time()
         if hp_grid is None:
             hp_grid = self.get_grid("cartesian")
 
-        # TODO: Add if computed
+        if self.respF and self.respF == freq:
+            return self.dataF
 
         if self.src_domain == "time":
             print("Compute response: Convert time to freq")
             self.time2freq()
 
-        # TODO: add src resp
-
         rel_pos = hp_grid.coords_m - np.asarray(self.position_v)
         dist = np.linalg.norm(rel_pos, axis=1)
         delay = dist / self.c
 
-        nb_dir, nb_freq = self.data_m.shape
         omega = 2 * np.pi * freq
-        self.data_m = self.data_m.astype(complex)
+        self.dataF = self._Sresp(freq) * self.pattern[
+            :, np.argmin(np.abs(self.xaxis_v - freq))
+        ].astype(complex)
+        print("shape:", self.dataF.shape)
+        phase = -1j * omega * delay
+        self.dataF *= 1j * self.rho * np.exp(phase)
+        self.dataF /= dist * 4 * np.pi
+        self.respF = freq
 
-        phase = -1j * omega * delay[:, None]
-        self.data_m *= 1j * self.rho * np.exp(phase)
-        self.data_m /= dist[:, None] * 4 * np.pi
-        self.resp_computed = True
+        if reshape:
+            self.dataF = self.dataF.reshape(hp_grid.length_x, hp_grid.length_y)
+        print("computing response for f took :", time() - start)
+        return self.dataF
 
-        pass
-
-    def compute_responseM(self):
-
+    def resp_for_M(self):
+        """
+        Compute the response of the source on its frequency range for a specific point on the grid.
+        """
         pass
 
     def enclosure(self, TL=None, dB=True, **kwargs):
@@ -564,3 +595,48 @@ class SpatialObject:
 
             mask = mask_mag
         return mask
+
+    def update_orientation(self, new_orientation_v, deg=None, target="pattern"):
+        """
+        Update the orientation of the cardioid directivity pattern using rotation matrices
+        without recomputing the entire pattern.
+
+        Does this function make any sense (computationnally), for the moment scipy approach for 2D but
+        full python approach can be more efficient
+
+        Args:
+            new_orientation_v : array-like
+                New orientation vector. For 2D, it's [azimuth], for 3D it's [azimuth, elevation]
+            deg : bool, optional
+                Whether the angles are in degrees. If None, uses the class's deg attribute.
+            target : str
+                data which would be updated after rotation ("pattern", "data_M", "dataF", "all" )
+        """
+        if deg is not None:
+            self.deg = deg
+
+        if not self.directed:
+            raise ValueError(
+                "Directivity pattern not set yet. Call _set_directivity_cardioid first."
+            )
+
+        if self.DIM == 2:
+
+            rotation_angle = new_orientation_v - self.orientation_v[0]
+
+            cos_the = np.cos(rotation_angle)
+            sin_the = np.sin(rotation_angle)
+            R = np.array([[cos_the, -sin_the], [sin_the, cos_the]])
+
+            hp_grid = self.get_grid("cartesian")
+            if target == "pattern":
+
+                self.pattern = self.pattern * R
+            elif target == "dataF":
+                self.dataF = self.dataF * R
+                return self.dataF
+            # R_coords = np.zeros_like(hp_grid.coords_m)
+            # R_coords[:, :2] = hp_grid.coords_m[:, :2] @ R.T
+
+        else:
+            return
