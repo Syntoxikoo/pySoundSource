@@ -60,8 +60,6 @@ def server(input, output, session):
 
     New_inst = reactive.Value(0)
 
-    update_data = reactive.value("create_instance")
-
     @reactive.calc()
     def define_grid():
         x = np.linspace(-input.x_length() / 2, input.x_length() / 2, grid_resolution)
@@ -92,8 +90,8 @@ def server(input, output, session):
         New_inst.set(New_inst() + 1)
 
     @reactive.calc()
-    @reactive.event(input.orientation)
     def reoriente():
+        input.orientation()
         print("reoriente")
         instances = Src_inst.get_instances(Src_inst.list_instances())
         Src_datas = [
@@ -101,7 +99,6 @@ def server(input, output, session):
             for hp in instances
         ]
         data = sum(Src_datas)
-        update_data.set("orientation")
         return data
 
     @reactive.calc()
@@ -132,18 +129,13 @@ def server(input, output, session):
             hp.resp_for_f(freq=input.target_freq(), reshape=True) for hp in instances
         ]
         data = sum(Src_datas)
-        update_data.set("create_instance")
         return data
 
     @render_widget
     @reactive.event(input.create_instance, input.orientation, ignore_init=True)
     def plot_field():
-        if update_data == "orientation":
-            data = reoriente()
 
-        elif update_data == "create_instance":
-            data = compute_field()
-
+        data = compute_field()
         _, _, x, y = define_grid()
         # Once the plotting will be clean -> function to do contour plot inside graphing.py
 
