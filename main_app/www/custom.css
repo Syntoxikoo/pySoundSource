@@ -1,0 +1,16 @@
+/* .sidebar {
+    resize: horizontal;
+    overflow: auto;
+    min-width: 250px;
+    max-width: 600px;
+    transition: width 0.1s;
+} */
+
+.sidebar, .shiny-split-layout > .sidebar {
+    resize: horizontal !important;
+    overflow: auto !important;
+    min-width: 250px !important;
+    max-width: 600px !important;
+    transition: width 0.1s !important;
+    z-index: 1000 !important;
+}

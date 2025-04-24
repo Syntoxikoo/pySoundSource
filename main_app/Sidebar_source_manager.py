@@ -8,6 +8,7 @@ import plotly.io as pio
 import pandas as pd
 import Tools.graphing.mpl_template
 import numpy as np
+from pathlib import Path
 
 pio.templates.default = "ECS"
 
@@ -18,34 +19,63 @@ data_m = np.zeros((grid_resolution**2, n_fft))
 
 
 app_ui = ui.page_fluid(
+    ui.include_css(path=Path(__file__).parent / "www" / "custom.css"),
     ui.layout_sidebar(
         ui.sidebar(
-            ui.input_numeric("x_length", "Width", value=10, min=1, max=100),
-            ui.input_numeric("y_length", "Length", value=10, min=1, max=100),
-            ui.input_numeric("target_freq", "Frequency", value=1000, min=20, max=20000),
+            ui.accordion(
+                ui.accordion_panel(
+                    "Field settings",
+                    ui.input_numeric("x_length", "Width", value=10, min=1, max=100),
+                    ui.input_numeric("y_length", "Length", value=10, min=1, max=100),
+                    ui.input_numeric(
+                        "target_freq", "Frequency", value=1000, min=20, max=20000
+                    ),
+                ),
+                ui.accordion_panel(
+                    "Source settings",
+                    ui.input_numeric("radius", "Radius (m)", 0.1, min=0.01, max=1),
+                    ui.input_numeric(
+                        "orientation", "Orientation (deg)", 0.0, min=0.0, max=360
+                    ),
+                    ui.input_select(
+                        "sel_dir",
+                        "Directivity",
+                        ["monopole", "cardioid", "bessel"],
+                        selected="monopole",
+                    ),
+                    ui.layout_column_wrap(
+                        ui.input_slider(
+                            "posX", "x (m)", value=0, min=-10 / 2, max=10 / 2
+                        ),
+                        ui.input_slider(
+                            "posY", "y (m)", value=0, min=-10 / 2, max=10 / 2
+                        ),
+                        width=1 / 2,
+                    ),
+                ),
+                multiple=False,
+                open=False,
+            ),
             ui.card(
-                ui.card_header("Source settings"),
-                ui.input_numeric("radius", "Radius (m)", 0.1, min=0.01, max=1),
-                ui.input_numeric(
-                    "orientation", "Orientation (deg)", 0.0, min=0.0, max=360
-                ),
-                ui.input_select(
-                    "sel_dir",
-                    "Directivity",
-                    ["monopole", "cardioid", "bessel"],
-                    selected="monopole",
-                ),
-                ui.layout_column_wrap(
-                    ui.input_slider("posX", "x (m)", value=0, min=-10 / 2, max=10 / 2),
-                    ui.input_slider("posY", "y (m)", value=0, min=-10 / 2, max=10 / 2),
-                    width=1 / 2,
+                ui.input_action_button("create_instance", "New Source"),
+                ui.popover(
+                    ui.input_action_button("del_instance", "Delete Source"),
+                    ui.p(
+                        "Select the source you whant to delete (helper: click on the ID of the source you want to delete)"
+                    ),
+                    ui.input_text(
+                        "DelID",
+                        label="Source to delete",
+                        placeholder="ID of source",
+                    ),
+                    ui.input_action_button("confirm_delete", "Confirm"),
                 ),
             ),
             ui.card(
-                ui.input_action_button("create_instance", "New instance"),
-                ui.card_header("Data Frame as table"),
-                ui.output_table("instance_table"),
+                ui.card_header("Sources Attribute"),
+                ui.output_data_frame("instance_table"),
             ),
+            width=250,
         ),
         # Main Card
         ui.card(ui.card_header("display field"), output_widget("plot_field")),
@@ -59,6 +89,10 @@ def server(input, output, session):
     Src_inst = SourcesManager()
 
     New_inst = reactive.Value(0)
+
+    attributes_changed = reactive.Value(0)
+
+    Del_sources = reactive.Value(0)
 
     @reactive.calc()
     def define_grid():
@@ -89,6 +123,7 @@ def server(input, output, session):
         )
 
         New_inst.set(New_inst() + 1)
+        attributes_changed.set(attributes_changed() + 1)
 
     @reactive.effect()
     @reactive.event(input.orientation, ignore_init=True)
@@ -127,6 +162,7 @@ def server(input, output, session):
     def compute_field():
         print("field computed")
         New_inst()
+        Del_sources()
         input.orientation()
         instances = Src_inst.get_instances(Src_inst.list_instances())
         SrcArgs = [
@@ -141,8 +177,24 @@ def server(input, output, session):
         data = sum(Src_datas)
         return data
 
+    @reactive.effect()
+    @reactive.event(input.confirm_delete, ignore_init=True)
+    def del_source():
+        print("deleting instance")
+        _id = input.DelID()
+        Src_inst.remove_instance(_id)
+        ui.update_text(
+            "DelID",
+            label="Source to delete",
+            placeholder="ID of source",
+        )
+        attributes_changed.set(attributes_changed() + 1)
+        Del_sources.set(Del_sources() + 1)
+
     @render_widget
-    @reactive.event(input.create_instance, input.orientation, ignore_init=True)
+    @reactive.event(
+        input.create_instance, input.orientation, input.confirm_delete, ignore_init=True
+    )
     def plot_field():
         if New_inst.get() == 0:
             return
@@ -150,46 +202,84 @@ def server(input, output, session):
 
         _, _, x, y = define_grid()
         # Once the plotting will be clean -> function to do contour plot inside graphing.py
-
-        fig = go.Figure()
-        fig.add_trace(
-            go.Contour(
-                z=SpatialObject._Lp(data),
-                x=x,
-                y=y,
-                colorbar=dict(title=dict(text=r"Pressure level (dB re 2e-5 Pa)")),
+        if isinstance(data, (list, np.ndarray)):
+            fig = go.Figure()
+            fig.add_trace(
+                go.Contour(
+                    z=SpatialObject._Lp(data),
+                    x=x,
+                    y=y,
+                    colorbar=dict(title=dict(text=r"Pressure level (dB re 2e-5 Pa)")),
+                )
             )
-        )
-        xS, yS, Infos = get_source_info()
+            xS, yS, Infos = get_source_info()
 
-        fig.add_trace(
-            go.Scatter(x=xS, y=yS, hovertext=Infos, hoverinfo="text", mode="markers")
-        )  # Should change using reactive value instead
-        # Params to twick : labelfont(color), coloring("heatmap","lines","fill"), .. colorscale
-        widget = go.FigureWidget(fig.data, fig.layout)
-        return widget
-
-    @render.table
-    def instance_table():
-        New_inst()
-        if len(Src_inst.list_instances()) > 0:
-            df = pd.DataFrame(
-                [
-                    {
-                        "ID": _id,
-                        "X": Src_inst.get_instance(_id).position_v[0],
-                        "Y": Src_inst.get_instance(_id).position_v[1],
-                    }
-                    for _id in Src_inst.list_instances()
-                ]
-            )
-
+            fig.add_trace(
+                go.Scatter(
+                    x=xS, y=yS, hovertext=Infos, hoverinfo="text", mode="markers"
+                )
+            )  # Should change using reactive value instead
+            # Params to twick : labelfont(color), coloring("heatmap","lines","fill"), .. colorscale
+            widget = go.FigureWidget(fig.data, fig.layout)
+            return widget
         else:
-            df = pd.DataFrame(columns=["ID", "X", "Y"])
-        return df
+            return
+
+    @render.data_frame
+    def instance_table():
+        attributes_changed()
+        return render.DataTable(
+            Src_inst.attributes,
+            editable=True,
+            selection_mode="row",
+            height="200px",
+        )
+
+    @instance_table.set_patch_fn
+    def _(*, patch: render.CellPatch):
+        update_data_with_patch(patch)
+        return patch["value"]
+
+    def update_data_with_patch(patch):
+        col_idx = patch["column_index"]
+        col_name = Src_inst.attributes.columns[col_idx]
+        if col_idx == 0:
+            fn = str
+        elif col_name in ["ID"]:
+            # ui.update_popover("DelSourcePopover", show=True)
+            fn = str
+
+        elif col_name in ["directivity"]:
+            fn = str
+        elif col_name in ["fmin", "fmax"]:
+            fn = int
+        else:
+            fn = float
+        Src_inst.attributes.iat[patch["row_index"], patch["column_index"]] = fn(
+            patch["value"]
+        )
+        attributes_changed.set(attributes_changed() + 1)
 
 
 app = App(app_ui, server)
+
+
+# New_inst()
+# if len(Src_inst.list_instances()) > 0:
+#     df = pd.DataFrame(
+#         [
+#             {
+#                 "ID": _id,
+#                 "X": Src_inst.get_instance(_id).position_v[0],
+#                 "Y": Src_inst.get_instance(_id).position_v[1],
+#             }
+#             for _id in Src_inst.list_instances()
+#         ]
+#     )
+
+# else:
+#     df = pd.DataFrame(columns=["ID", "X", "Y"])
+# return df
 
 
 # plotly graph

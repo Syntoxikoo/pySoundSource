@@ -1,31 +1,27 @@
-from dataclasses import make_dataclass, asdict
-
-# Define the SourceArg dataclass
-SourceArg = make_dataclass(
-    "SourceArg",
-    [
-        ("ID", str),
-        ("x", float),
-        ("y", float),
-        ("directivity", str),
-        ("gain", float),
-        ("orientation", float),
-        ("radius", float),
-        ("fmin", int),
-        ("fmax", int),
-    ],
-)
+import pandas as pd
 
 
 class SourcesManager:
     """
-    TODO:
-    Create a method to save each attributes of each instance in a csv or txt
+    Manager class for audio sources with methods to create, retrieve and manage source instances
     """
 
     def __init__(self):
         self.instances = {}
-        self.attributes = {}
+        # Initialize attributes as an empty DataFrame
+        self.attributes = pd.DataFrame(
+            columns=[
+                "ID",
+                "x",
+                "y",
+                "directivity",
+                "gain",
+                "orientation",
+                "radius",
+                "fmin",
+                "fmax",
+            ]
+        )
 
     def create_instance(self, _id, class_name, *args, **kwargs):
         """
@@ -47,17 +43,18 @@ class SourcesManager:
         if not self.instances[_id].directed:
             self.instances[_id].set_directivity(kwargs["directivity"])
 
-        self.attributes[_id] = SourceArg(
-            ID=_id,
-            x=kwargs["position_v"][0],
-            y=kwargs["position_v"][1],
-            directivity=kwargs["directivity"],
-            gain=kwargs["src_resp"],
-            orientation=kwargs["orientation_v"][0],
-            radius=kwargs["radius"],
-            fmin=kwargs.get("fmin", 20),
-            fmax=kwargs.get("fmax", 20000),
-        )
+        self.attributes.loc[_id] = [
+            _id,
+            kwargs["position_v"][0],
+            kwargs["position_v"][1],
+            kwargs["directivity"],
+            kwargs["src_resp"],
+            kwargs["orientation_v"][0],
+            kwargs["radius"],
+            kwargs.get("fmin", 20),
+            kwargs.get("fmax", 20000),
+        ]
+
         return instance
 
     def get_instance(self, _id):
@@ -65,8 +62,8 @@ class SourcesManager:
         return self.instances.get(_id)
 
     def get_instances(self, _ids):
-        """Get multiple instances by their IDs
-
+        """
+        Get multiple instances by their IDs
         Args:
             id_list (list): A list of instance IDs
 
@@ -77,23 +74,15 @@ class SourcesManager:
 
     def get_attributes(self, _id):
         """Get the attributes for an instance by its ID"""
-        return self.attributes.get(_id)
+        if _id in self.attributes.index:
+            return self.attributes.loc[_id]
+        return None
 
     def get_attribute(self, _id, key, default=None):
-        """Get a specific attribute for an instance by its ID and attribute key
-
-        Args:
-            _id: Unique identifier for the instance
-            key: The attribute key to retrieve
-            default: Value to return if either the ID or key doesn't exist
-
-        Returns:
-            The attribute value or the default if not found
-        """
-        attributes = self.get_attributes(_id)
-        if attributes is None:
-            return default
-        return asdict(attributes).get(key, default)
+        """Get a specific attribute for an instance by its ID and attribute key"""
+        if _id in self.attributes.index and key in self.attributes.columns:
+            return self.attributes.loc[_id, key]
+        return default
 
     def list_instances(self):
         """List all instance IDs"""
@@ -101,14 +90,22 @@ class SourcesManager:
 
     def get_attributes_dict(self, _id):
         """Get the attributes as a dictionary"""
-        source_args = self.get_attributes(_id)
-        if source_args:
-            return asdict(source_args)
+        if _id in self.attributes.index:
+            return self.attributes.loc[_id].to_dict()
         return None
 
     def remove_instance(self, _id):
         """Remove an instance from the registry"""
         if _id in self.instances:
             del self.instances[_id]
-        if _id in self.attributes:
-            del self.attributes[_id]
+        if _id in self.attributes.index:
+            self.attributes = self.attributes.drop(_id)
+
+    def save_attributes(self, filepath):
+        """Save all attributes to a CSV file"""
+        # Save with index to preserve IDs
+        self.attributes.to_csv(filepath)
+
+    def load_attributes(self, filepath):
+        """Load attributes from a CSV file"""
+        self.attributes = pd.read_csv(filepath, index_col=0)
