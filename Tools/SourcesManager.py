@@ -49,8 +49,8 @@ class SourcesManager:
 
         self.attributes[_id] = SourceArg(
             ID=_id,
-            x=kwargs["azim_v"],
-            y=kwargs["elev_v"],
+            x=kwargs["position_v"][0],
+            y=kwargs["position_v"][1],
             directivity=kwargs["directivity"],
             gain=kwargs["src_resp"],
             orientation=kwargs["orientation_v"][0],
@@ -78,6 +78,22 @@ class SourcesManager:
     def get_attributes(self, _id):
         """Get the attributes for an instance by its ID"""
         return self.attributes.get(_id)
+
+    def get_attribute(self, _id, key, default=None):
+        """Get a specific attribute for an instance by its ID and attribute key
+
+        Args:
+            _id: Unique identifier for the instance
+            key: The attribute key to retrieve
+            default: Value to return if either the ID or key doesn't exist
+
+        Returns:
+            The attribute value or the default if not found
+        """
+        attributes = self.get_attributes(_id)
+        if attributes is None:
+            return default
+        return asdict(attributes).get(key, default)
 
     def list_instances(self):
         """List all instance IDs"""

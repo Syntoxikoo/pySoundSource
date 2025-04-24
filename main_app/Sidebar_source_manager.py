@@ -85,21 +85,23 @@ def server(input, output, session):
             elev_v=Y.flatten(),
             directivity=input.sel_dir(),
             src_resp=1.0,
+            deg=True,
         )
 
         New_inst.set(New_inst() + 1)
 
-    @reactive.calc()
+    @reactive.effect()
+    @reactive.event(input.orientation, ignore_init=True)
     def reoriente():
-        input.orientation()
+
         print("reoriente")
         instances = Src_inst.get_instances(Src_inst.list_instances())
-        Src_datas = [
-            hp.update_orientation(new_orientation_v=input.orientation(), target="dataF")
-            for hp in instances
+        SrcArgs = [
+            Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
         ]
-        data = sum(Src_datas)
-        return data
+        for ii, hp in enumerate(instances):
+            hp.orientation_v[0] = input.orientation()
+            hp.set_directivity(SrcArgs[ii]["directivity"])
 
     @reactive.calc()
     def get_source_info():
@@ -123,10 +125,18 @@ def server(input, output, session):
 
     @reactive.calc()
     def compute_field():
+        print("field computed")
         New_inst()
+        input.orientation()
         instances = Src_inst.get_instances(Src_inst.list_instances())
+        SrcArgs = [
+            Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
+        ]
         Src_datas = [
-            hp.resp_for_f(freq=input.target_freq(), reshape=True) for hp in instances
+            hp.resp_for_f(
+                freq=input.target_freq(), reshape=True, storedArgs=SrcArgs[ii]
+            )
+            for ii, hp in enumerate(instances)
         ]
         data = sum(Src_datas)
         return data
@@ -134,13 +144,16 @@ def server(input, output, session):
     @render_widget
     @reactive.event(input.create_instance, input.orientation, ignore_init=True)
     def plot_field():
-
+        if New_inst.get() == 0:
+            return
         data = compute_field()
+
         _, _, x, y = define_grid()
         # Once the plotting will be clean -> function to do contour plot inside graphing.py
 
-        fig = go.Figure(
-            data=go.Contour(
+        fig = go.Figure()
+        fig.add_trace(
+            go.Contour(
                 z=SpatialObject._Lp(data),
                 x=x,
                 y=y,
@@ -195,3 +208,23 @@ app = App(app_ui, server)
 #     fig = go.Figure(data=go.Contour(z=SpatialObject._Lp(data), x=X, y=Y))
 #     return fig
 # output_widget("plot_field"),
+
+
+# Reactive value that reset the calculation
+# Srcs_state = reactive.value({"create_instance": 0, "orientation": 0})
+
+
+# Might need to be a function appart -> get_the_data_from_right_func
+# state_create_instance = input.create_instance()
+# state_orientation = input.orientation()
+# stored = Srcs_state.get()
+# if state_orientation != stored["orientation"]:
+#     print("plot field: orientation", state_orientation)
+#     if stored["create_instance"] > 0:
+
+#     else:
+#         return
+
+# Srcs_state.set(
+#     {"create_instance": state_create_instance, "orientation": state_orientation}
+# )
