@@ -154,7 +154,9 @@ class SpatialObject:
         """
         TODO: add more args to verify
         """
+        print([])
         if self.orientation_v[0] != storedArgs["orientation"]:
+            print("orientation diff")
             return True
         elif self.directed != storedArgs["directivity"]:
             return True
@@ -164,6 +166,7 @@ class SpatialObject:
         ):
             return True
         else:
+            print("no diff")
             return False
 
     def _Sresp(self, freq=None):
@@ -532,13 +535,14 @@ class SpatialObject:
         Exemple:
 
         """
-        if storedArgs:
+        if storedArgs is not None:
             forcedCompute = self.verifArgs(storedArgs)
 
         if hp_grid is None:
             hp_grid = self.get_grid("cartesian")
 
         if self.respF and self.respF == freq and not forcedCompute:
+            print("no recompute")
             return self.dataF
 
         if self.src_domain == "time":

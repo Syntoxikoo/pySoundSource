@@ -54,7 +54,7 @@ class SourcesManager:
             kwargs.get("fmin", 20),
             kwargs.get("fmax", 20000),
         ]
-
+        self.Stored = self.attributes.copy()
         return instance
 
     def get_instance(self, _id):

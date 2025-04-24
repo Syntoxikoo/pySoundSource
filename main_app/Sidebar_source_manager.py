@@ -89,8 +89,13 @@ def server(input, output, session):
     Src_inst = SourcesManager()
 
     New_inst = reactive.Value(0)
+    attr = Src_inst.attributes.columns.to_list()
+    Attribute_dict = {}
+    for ii in range(len(attr)):
+        Attribute_dict[attr[ii]] = reactive.Value(0)
 
     attributes_changed = reactive.Value(0)
+    rerun = reactive.Value(0)
 
     Del_sources = reactive.Value(0)
 
@@ -126,7 +131,7 @@ def server(input, output, session):
         attributes_changed.set(attributes_changed() + 1)
 
     @reactive.effect()
-    @reactive.event(input.orientation, ignore_init=True)
+    @reactive.event(Attribute_dict["orientation"], ignore_init=True)
     def reoriente():
 
         print("reoriente")
@@ -135,8 +140,10 @@ def server(input, output, session):
             Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
         ]
         for ii, hp in enumerate(instances):
-            hp.orientation_v[0] = input.orientation()
+            hp.orientation_v[0] = SrcArgs[ii]["orientation"]
+            print(hp.orientation_v[0])
             hp.set_directivity(SrcArgs[ii]["directivity"])
+        rerun.set(rerun() + 1)
 
     @reactive.calc()
     def get_source_info():
@@ -163,14 +170,20 @@ def server(input, output, session):
         print("field computed")
         New_inst()
         Del_sources()
+        rerun()
+
         input.orientation()
         instances = Src_inst.get_instances(Src_inst.list_instances())
         SrcArgs = [
             Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
         ]
+        for ii in range(len(instances)):
+            print(SrcArgs[ii]["orientation"])
         Src_datas = [
             hp.resp_for_f(
-                freq=input.target_freq(), reshape=True, storedArgs=SrcArgs[ii]
+                freq=input.target_freq(),
+                reshape=True,
+                storedArgs=Src_inst.Stored.iloc[ii],
             )
             for ii, hp in enumerate(instances)
         ]
@@ -193,7 +206,10 @@ def server(input, output, session):
 
     @render_widget
     @reactive.event(
-        input.create_instance, input.orientation, input.confirm_delete, ignore_init=True
+        input.create_instance,
+        input.confirm_delete,
+        Attribute_dict["orientation"],
+        ignore_init=True,
     )
     def plot_field():
         if New_inst.get() == 0:
@@ -255,9 +271,12 @@ def server(input, output, session):
             fn = int
         else:
             fn = float
+        Src_inst.Stored = Src_inst.attributes.copy()
         Src_inst.attributes.iat[patch["row_index"], patch["column_index"]] = fn(
             patch["value"]
         )
+
+        Attribute_dict[col_name].set(Src_inst.attributes[col_name])
         attributes_changed.set(attributes_changed() + 1)
 
 
