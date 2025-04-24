@@ -60,7 +60,7 @@ def server(input, output, session):
 
     New_inst = reactive.Value(0)
 
-    update_data = reactive.value(None)
+    update_data = reactive.value("create_instance")
 
     @reactive.calc()
     def define_grid():
@@ -138,7 +138,6 @@ def server(input, output, session):
     @render_widget
     @reactive.event(input.create_instance, input.orientation, ignore_init=True)
     def plot_field():
-
         if update_data == "orientation":
             data = reoriente()
 
