@@ -30,7 +30,9 @@ It has been designed to be user friendly and don't require any coding (for now -
 ### Future features
 - **Field visualisation** :
   - Window for plot parameter
-    - 
+    - Control the colormap
+    - Control the scale of the contour plot to display
+    - Control the contour settings
 ## Running application
 ### Web hosted version
 
