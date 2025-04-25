@@ -15,13 +15,20 @@ It has been designed to be user friendly and don't require any coding (for now -
   - observing radiation of a source.
   - interaction between sources.
   - hover the mouse above a source give some information about it.
-  - the pressure in dB SPL is displayed when hovering the mouse on the graphs.  
+  - the pressure in dB SPL is displayed when hovering the mouse on the graphs.
+
+- **Field Control**:
+  - Choosing the frequency of interest -> the graph update acordingly
+  - Choosing the size of the free field rendering (x,y)
+
+
+
 - Timeline generation for sequential data visualization
 - Stacked image plotting for comparing multiple datasets
 - Interactive graph generation using Plotly
 - Support for saving visualizations in various formats
-<iframe width="640" height="360" src="https://www.loom.com/embed/a22156e2e2dc4d96a14f5b3ea2fe52e0?sid=931e14ff-3181-43f6-9b5b-895052220589" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen></iframe>
-
+### Future features
+-
 ## Running application
 ### Web hosted version
 
