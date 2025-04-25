@@ -28,7 +28,9 @@ It has been designed to be user friendly and don't require any coding (for now -
 - Interactive graph generation using Plotly
 - Support for saving visualizations in various formats
 ### Future features
--
+- **Field visualisation** :
+  - Window for plot parameter
+    - 
 ## Running application
 ### Web hosted version
 
