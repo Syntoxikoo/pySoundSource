@@ -13,7 +13,7 @@ from pathlib import Path
 pio.templates.default = "ECS"
 
 fs = 44100
-grid_resolution = 100
+grid_resolution = 10
 n_fft = 128
 data_m = np.zeros((grid_resolution**2, n_fft))
 
@@ -81,7 +81,7 @@ app_ui = ui.page_fluid(
             width=250,
         ),
         # Main Card
-        ui.layout_column_wrap(
+        ui.layout_columns(
             ui.card(
                 ui.card_header(
                     "display field",
@@ -89,15 +89,16 @@ app_ui = ui.page_fluid(
                     class_="d-flex justify-content-between align-items-center",
                 ),
                 output_widget("plot_field"),
-                style="width: 600px; height: 600px;",
-                class_="resizable-card",
+                class_="displayfield-card",
                 full_screen=True,
+                max_height=600,
             ),
             ui.card(
                 ui.p("her"),
-                class_="resizable-card",
+                # class_="displayfield-card",
             ),
-            width=1 / 2,
+            col_widths=[7, 5],
+            fixed_width=True,
         ),
     ),
     class_="p-3",
@@ -174,14 +175,12 @@ def server(input, output, session):
     @reactive.event(Attribute_dict["x"], Attribute_dict["y"], ignore_init=True)
     def update_pos():
 
-        print("position")
         instances = Src_inst.get_instances(Src_inst.list_instances())
         SrcArgs = [
             Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
         ]
         for ii, hp in enumerate(instances):
             hp.position_v[:2] = [SrcArgs[ii]["x"], SrcArgs[ii]["y"]]
-            print("position of the source", hp.position_v[:2])
             hp.set_directivity(SrcArgs[ii]["directivity"])
         rerun.set(rerun() + 1)
 
@@ -208,7 +207,6 @@ def server(input, output, session):
 
     @reactive.calc()
     def compute_field():
-        print("field computed")
         New_inst()
         Del_sources()
         rerun()
@@ -217,8 +215,7 @@ def server(input, output, session):
         SrcArgs = [
             Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
         ]
-        for ii in range(len(instances)):
-            print(SrcArgs[ii]["orientation"])
+        print([hp.directed for hp in instances])
         Src_datas = [
             hp.resp_for_f(
                 freq=input.target_freq(),
@@ -245,6 +242,7 @@ def server(input, output, session):
     @reactive.event(
         input.create_instance,
         input.confirm_delete,
+        input.target_freq,
         Attribute_dict["orientation"],
         Attribute_dict["x"],
         Attribute_dict["y"],
@@ -265,6 +263,8 @@ def server(input, output, session):
                     x=x,
                     y=y,
                     colorbar=dict(title=dict(text=r"Pressure level (dB re 2e-5 Pa)")),
+                    zmax=100,
+                    zmin=50,
                 )
             )
             xS, yS, Infos = get_source_info()

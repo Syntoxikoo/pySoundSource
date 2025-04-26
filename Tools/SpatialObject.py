@@ -6,7 +6,6 @@ import sys
 from Tools import sig_proc_tools as spt
 from Tools import space_tools as st
 from time import time
-from scipy import ndimage
 
 
 class SpatialObject:
@@ -376,6 +375,7 @@ class SpatialObject:
         # GET TARGET DIRECTION
         # assert self.directed is not None, "Directivity already set"
         if self.DIM == 2:
+            print("choosing bessel dir")
             xy_trg_v = st.pol2cart(1.0, self.orientation_v[0], deg=self.deg)
             hp_grid = self.get_grid("spherical_1")
             angle = hp_grid.coords_m[:, 1] - np.deg2rad(self.orientation_v[0])
@@ -475,7 +475,7 @@ class SpatialObject:
         nb_dir, nb_freq = self.data_m.shape
         freqs_v = self.xaxis_v
         omega_v = 2 * np.pi * freqs_v
-        self.data_m = self._Sresp() * self.data_m.astype(complex)
+        self.data_m = self._Sresp() * self.pattern.astype(complex)
         if fast:
             k = omega_v / self.c
             return k, dist, self.data_m
@@ -537,7 +537,7 @@ class SpatialObject:
         """
         if storedArgs is not None:
             forcedCompute = self.verifArgs(storedArgs)
-
+        print("resp for f : f = ", freq)
         if hp_grid is None:
             hp_grid = self.get_grid("cartesian")
 
@@ -552,7 +552,7 @@ class SpatialObject:
         rel_pos = hp_grid.coords_m - np.asarray(self.position_v)
         dist = np.linalg.norm(rel_pos, axis=1)
         delay = dist / self.c
-
+        print(np.min(np.abs(self.xaxis_v - freq)))
         omega = 2 * np.pi * freq
         self.dataF = self._Sresp(freq) * self.pattern[
             :, np.argmin(np.abs(self.xaxis_v - freq))
