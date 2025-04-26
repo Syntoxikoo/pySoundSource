@@ -64,7 +64,7 @@ app_ui = ui.page_fluid(
                         "Select the source you whant to delete (helper: click on the ID of the source you want to delete)"
                     ),
                     ui.input_text(
-                        "DelID",
+                        id="DelID",
                         label="Source to delete",
                         placeholder="ID of source",
                     ),
@@ -72,13 +72,33 @@ app_ui = ui.page_fluid(
                 ),
             ),
             ui.card(
-                ui.card_header("Sources Attribute"),
+                ui.card_header(
+                    "Sources Attribute",
+                ),
                 ui.output_data_frame("instance_table"),
+                full_screen=True,
             ),
             width=250,
         ),
         # Main Card
-        ui.card(ui.card_header("display field"), output_widget("plot_field")),
+        ui.layout_column_wrap(
+            ui.card(
+                ui.card_header(
+                    "display field",
+                    ui.input_dark_mode(mode="light"),
+                    class_="d-flex justify-content-between align-items-center",
+                ),
+                output_widget("plot_field"),
+                style="width: 600px; height: 600px;",
+                class_="resizable-card",
+                full_screen=True,
+            ),
+            ui.card(
+                ui.p("her"),
+                class_="resizable-card",
+            ),
+            width=1 / 2,
+        ),
     ),
     class_="p-3",
 )
@@ -126,6 +146,13 @@ def server(input, output, session):
             src_resp=1.0,
             deg=True,
         )
+        # Reseting source setting
+        ui.update_numeric("radius", label="Radius (m)", value=0.1, min=0.01, max=1)
+        ui.update_numeric(
+            "orientation", label="Orientation (deg)", value=0.0, min=0.0, max=360
+        )
+        ui.update_slider("posX", label="x (m)", value=0, min=-10 / 2, max=10 / 2),
+        ui.update_slider("posY", label="y (m)", value=0, min=-10 / 2, max=10 / 2),
 
         New_inst.set(New_inst() + 1)
         attributes_changed.set(attributes_changed() + 1)
@@ -134,20 +161,34 @@ def server(input, output, session):
     @reactive.event(Attribute_dict["orientation"], ignore_init=True)
     def reoriente():
 
-        print("reoriente")
         instances = Src_inst.get_instances(Src_inst.list_instances())
         SrcArgs = [
             Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
         ]
         for ii, hp in enumerate(instances):
             hp.orientation_v[0] = SrcArgs[ii]["orientation"]
-            print(hp.orientation_v[0])
+            hp.set_directivity(SrcArgs[ii]["directivity"])
+        rerun.set(rerun() + 1)
+
+    @reactive.effect()
+    @reactive.event(Attribute_dict["x"], Attribute_dict["y"], ignore_init=True)
+    def update_pos():
+
+        print("position")
+        instances = Src_inst.get_instances(Src_inst.list_instances())
+        SrcArgs = [
+            Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
+        ]
+        for ii, hp in enumerate(instances):
+            hp.position_v[:2] = [SrcArgs[ii]["x"], SrcArgs[ii]["y"]]
+            print("position of the source", hp.position_v[:2])
             hp.set_directivity(SrcArgs[ii]["directivity"])
         rerun.set(rerun() + 1)
 
     @reactive.calc()
     def get_source_info():
         New_inst()
+        rerun()
         x = [
             Src_inst.get_instance(_id).position_v[0]
             for _id in Src_inst.list_instances()
@@ -172,7 +213,6 @@ def server(input, output, session):
         Del_sources()
         rerun()
 
-        input.orientation()
         instances = Src_inst.get_instances(Src_inst.list_instances())
         SrcArgs = [
             Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
@@ -193,13 +233,10 @@ def server(input, output, session):
     @reactive.effect()
     @reactive.event(input.confirm_delete, ignore_init=True)
     def del_source():
-        print("deleting instance")
         _id = input.DelID()
         Src_inst.remove_instance(_id)
         ui.update_text(
-            "DelID",
-            label="Source to delete",
-            placeholder="ID of source",
+            id="DelID", label="Source to delete", placeholder="ID of source", value=""
         )
         attributes_changed.set(attributes_changed() + 1)
         Del_sources.set(Del_sources() + 1)
@@ -209,6 +246,8 @@ def server(input, output, session):
         input.create_instance,
         input.confirm_delete,
         Attribute_dict["orientation"],
+        Attribute_dict["x"],
+        Attribute_dict["y"],
         ignore_init=True,
     )
     def plot_field():
@@ -234,7 +273,23 @@ def server(input, output, session):
                 go.Scatter(
                     x=xS, y=yS, hovertext=Infos, hoverinfo="text", mode="markers"
                 )
-            )  # Should change using reactive value instead
+            )
+            fig.update_layout(
+                xaxis=dict(
+                    range=[x.min(), x.max()],
+                    # scaleanchor="x",
+                    # scaleratio=1,
+                    # constrain="domain",
+                ),
+                yaxis=dict(
+                    range=[y.min(), y.max()],
+                    # scaleanchor="x",
+                    # scaleratio=1,
+                    # constrain="domain",
+                ),
+                margin=dict(l=30, b=30),
+            )
+            # Should change using reactive value instead
             # Params to twick : labelfont(color), coloring("heatmap","lines","fill"), .. colorscale
             widget = go.FigureWidget(fig.data, fig.layout)
             return widget

@@ -14,3 +14,11 @@
     transition: width 0.1s !important;
     z-index: 1000 !important;
 }
+.resizable-card {
+    resize: both; 
+    overflow: auto;
+    min-width: 600px;
+    min-height: 600px;
+    max-width: 800px;
+    max-height: 800px;
+}

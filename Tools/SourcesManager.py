@@ -98,6 +98,11 @@ class SourcesManager:
         """Remove an instance from the registry"""
         if _id in self.instances:
             del self.instances[_id]
+        elif _id.lower() == "all":
+            del self.instances
+            self.instances = {}
+            self.attributes = pd.DataFrame(columns=self.attributes.columns)
+            self.Stored = self.attributes.copy()
         if _id in self.attributes.index:
             self.attributes = self.attributes.drop(_id)
 
