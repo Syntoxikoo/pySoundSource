@@ -1,0 +1,27 @@
+/* .sidebar {
+    resize: horizontal;
+    overflow: auto;
+    min-width: 250px;
+    max-width: 600px;
+    transition: width 0.1s;
+} */
+
+.sidebar, .shiny-split-layout > .sidebar {
+    resize: None !important;
+    overflow: auto !important;
+    width: 250;
+    transition: none !important;
+    z-index: 1000 !important;
+}
+.displayfield-card {
+    /* resize: both;  */
+    /* overflow: auto; */
+    /* min-width: 600px;
+    min-height: 600px;
+    max-width: 800px;
+    max-height: 800px; */
+    height: 600px;
+    width: 600px;
+    aspect-ratio: 1/1; 
+    overflow: hidden; 
+}
