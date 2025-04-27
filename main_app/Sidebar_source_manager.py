@@ -9,13 +9,11 @@ import pandas as pd
 import Tools.graphing.mpl_template
 import numpy as np
 from pathlib import Path
+from icon import *
 
 pio.templates.default = "ECS"
 
-fs = 44100
-grid_resolution = 10
-n_fft = 128
-data_m = np.zeros((grid_resolution**2, n_fft))
+fs = 16000
 
 
 app_ui = ui.page_fluid(
@@ -25,10 +23,50 @@ app_ui = ui.page_fluid(
             ui.accordion(
                 ui.accordion_panel(
                     "Field settings",
-                    ui.input_numeric("x_length", "Width", value=10, min=1, max=100),
-                    ui.input_numeric("y_length", "Length", value=10, min=1, max=100),
                     ui.input_numeric(
-                        "target_freq", "Frequency", value=1000, min=20, max=20000
+                        "fs",
+                        "Sampling Frequency (Hz)",
+                        value=16000,
+                        min=8000,
+                        max=48000,
+                        step=8000,
+                    ),
+                    ui.layout_column_wrap(
+                        ui.input_numeric("x_length", "Width", value=10, min=1, max=100),
+                        ui.input_numeric(
+                            "y_length", "Length", value=10, min=1, max=100
+                        ),
+                        width=1 / 2,
+                    ),
+                    ui.input_numeric(
+                        "target_freq",
+                        label="Frequency (Hz)",
+                        value=1000,
+                        min=20,
+                        max=20000,
+                        step=20,
+                    ),
+                    ui.input_select(
+                        "nfft",
+                        label="Nfft",
+                        choices={
+                            "64": 64,
+                            "128": 128,
+                            "256": 256,
+                            "512": 512,
+                            "1024": 1024,
+                            "2048": 2048,
+                        },
+                        selected="128",
+                    ),
+                    ui.input_slider(
+                        "grid_res",
+                        label="grid precision",
+                        min=10,
+                        value=100,
+                        max=200,
+                        step=10,
+                        ticks=True,
                     ),
                 ),
                 ui.accordion_panel(
@@ -51,6 +89,14 @@ app_ui = ui.page_fluid(
                             "posY", "y (m)", value=0, min=-10 / 2, max=10 / 2
                         ),
                         width=1 / 2,
+                    ),
+                    ui.input_slider(
+                        "set_delay",
+                        label="Delay (ms)",
+                        min=0,
+                        value=0,
+                        max=20,
+                        step=0.1,
                     ),
                 ),
                 multiple=False,
@@ -85,7 +131,7 @@ app_ui = ui.page_fluid(
             ui.card(
                 ui.card_header(
                     "display field",
-                    ui.input_dark_mode(mode="light"),
+                    ui.input_dark_mode(id="darkmode", mode="light"),
                     class_="d-flex justify-content-between align-items-center",
                 ),
                 output_widget("plot_field"),
@@ -94,7 +140,24 @@ app_ui = ui.page_fluid(
                 max_height=600,
             ),
             ui.card(
-                ui.p("her"),
+                ui.output_ui("pressure_axis_box"),
+                # ui.value_box(
+                #     "Pressure in axis at 1m",
+                #     f"{0} dB SPL",
+                #     output_widget("plot_OV_axis"),
+                #     showcase=sound_pressureIcon,
+                #     id="pAxisBox",
+                #     theme="bg-orange",
+                #     showcase_layout="top right",
+                # ),
+                ui.value_box(
+                    "Mean pressure in the listening zone",
+                    0,
+                    showcase=sound_pressureIcon,
+                    theme="bg-gradient-blue-purple",
+                    showcase_layout="top right",
+                ),
+                fill=False,
                 # class_="displayfield-card",
             ),
             col_widths=[7, 5],
@@ -109,6 +172,7 @@ def server(input, output, session):
 
     Src_inst = SourcesManager()
 
+    # -- REACTIVITY --
     New_inst = reactive.Value(0)
     attr = Src_inst.attributes.columns.to_list()
     Attribute_dict = {}
@@ -117,27 +181,32 @@ def server(input, output, session):
 
     attributes_changed = reactive.Value(0)
     rerun = reactive.Value(0)
-
+    target_pos = reactive.Value([1, 0])
     Del_sources = reactive.Value(0)
+    p_axis = reactive.Value(0)
+
+    # ----------------
 
     @reactive.calc()
     def define_grid():
-        x = np.linspace(-input.x_length() / 2, input.x_length() / 2, grid_resolution)
-        y = np.linspace(-input.y_length() / 2, input.y_length() / 2, grid_resolution)
+        x = np.linspace(-input.x_length() / 2, input.x_length() / 2, input.grid_res())
+        y = np.linspace(-input.y_length() / 2, input.y_length() / 2, input.grid_res())
         X, Y = np.meshgrid(x, y)
+
         return X, Y, x, y
 
     @reactive.effect()
     @reactive.event(input.create_instance)
-    def _():
+    def instanciate():
+
         X, Y, _, _ = define_grid()
         Src_inst.create_instance(
-            f"{input.sel_dir()[0].upper()}_{New_inst.get()}",
+            f"{input.sel_dir()[0].upper()}{New_inst.get()}",
             SpatialObject,
-            fs=fs,
+            fs=input.fs(),
             dist_v=0,
             norm_s="cartesian",
-            data_m=data_m,
+            data_m=np.zeros((input.grid_res() ** 2, int(input.nfft()))),
             radius=input.radius(),
             position_v=[input.posX(), input.posY(), 0],
             orientation_v=[input.orientation(), 0],
@@ -146,48 +215,43 @@ def server(input, output, session):
             directivity=input.sel_dir(),
             src_resp=1.0,
             deg=True,
+            n_fft=int(input.nfft()),
+            delay=input.set_delay() * 1e-3,
         )
+
         # Reseting source setting
         ui.update_numeric("radius", label="Radius (m)", value=0.1, min=0.01, max=1)
         ui.update_numeric(
             "orientation", label="Orientation (deg)", value=0.0, min=0.0, max=360
         )
-        ui.update_slider("posX", label="x (m)", value=0, min=-10 / 2, max=10 / 2),
-        ui.update_slider("posY", label="y (m)", value=0, min=-10 / 2, max=10 / 2),
+        ui.update_slider("posX", label="x (m)", value=0, min=-10 / 2, max=10 / 2)
+        ui.update_slider("posY", label="y (m)", value=0, min=-10 / 2, max=10 / 2)
 
+        # -- REACTIVITY --
         New_inst.set(New_inst() + 1)
         attributes_changed.set(attributes_changed() + 1)
+        # ----------------
 
     @reactive.effect()
-    @reactive.event(Attribute_dict["orientation"], ignore_init=True)
-    def reoriente():
-
-        instances = Src_inst.get_instances(Src_inst.list_instances())
-        SrcArgs = [
-            Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
-        ]
-        for ii, hp in enumerate(instances):
-            hp.orientation_v[0] = SrcArgs[ii]["orientation"]
-            hp.set_directivity(SrcArgs[ii]["directivity"])
-        rerun.set(rerun() + 1)
-
-    @reactive.effect()
-    @reactive.event(Attribute_dict["x"], Attribute_dict["y"], ignore_init=True)
-    def update_pos():
-
-        instances = Src_inst.get_instances(Src_inst.list_instances())
-        SrcArgs = [
-            Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
-        ]
-        for ii, hp in enumerate(instances):
-            hp.position_v[:2] = [SrcArgs[ii]["x"], SrcArgs[ii]["y"]]
-            hp.set_directivity(SrcArgs[ii]["directivity"])
-        rerun.set(rerun() + 1)
+    @reactive.event(input.confirm_delete, ignore_init=True)
+    def del_source():
+        _id = input.DelID()
+        Src_inst.remove_instance(_id)
+        ui.update_text(
+            id="DelID", label="Source to delete", placeholder="ID of source", value=""
+        )
+        # -- REACTIVITY --
+        attributes_changed.set(attributes_changed() + 1)
+        Del_sources.set(Del_sources() + 1)
+        # ----------------
 
     @reactive.calc()
     def get_source_info():
+        # ---- TRIGER ----
         New_inst()
         rerun()
+        Del_sources()
+        # ----------------
         x = [
             Src_inst.get_instance(_id).position_v[0]
             for _id in Src_inst.list_instances()
@@ -205,55 +269,151 @@ def server(input, output, session):
         ]
         return x, y, Infos
 
-    @reactive.calc()
-    def compute_field():
-        New_inst()
-        Del_sources()
-        rerun()
+    @reactive.effect()
+    @reactive.event(Attribute_dict["orientation"], ignore_init=True)
+    def reoriente():
 
         instances = Src_inst.get_instances(Src_inst.list_instances())
         SrcArgs = [
             Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
         ]
-        print([hp.directed for hp in instances])
+        for ii, hp in enumerate(instances):
+            hp.orientation_v[0] = SrcArgs[ii]["orientation"]
+            hp.set_directivity(SrcArgs[ii]["directivity"])
+
+        # -- REACTIVITY --
+        rerun.set(rerun() + 1)
+        # ----------------
+
+    @reactive.effect()
+    @reactive.event(Attribute_dict["x"], Attribute_dict["y"], ignore_init=True)
+    def update_pos():
+
+        instances = Src_inst.get_instances(Src_inst.list_instances())
+        SrcArgs = [
+            Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
+        ]
+        for ii, hp in enumerate(instances):
+            hp.position_v[:2] = [SrcArgs[ii]["x"], SrcArgs[ii]["y"]]
+            hp.set_directivity(SrcArgs[ii]["directivity"])
+
+        # -- REACTIVITY --
+        rerun.set(rerun() + 1)
+        # ----------------
+
+    @reactive.effect()
+    @reactive.event(Attribute_dict["delay"], ignore_init=True)
+    def update_delay():
+
+        instances = Src_inst.get_instances(Src_inst.list_instances())
+        SrcArgs = [
+            Src_inst.get_attributes_dict(_id) for _id in Src_inst.list_instances()
+        ]
+        for ii, hp in enumerate(instances):
+            hp.delay = SrcArgs[ii]["delay"]
+
+        # -- REACTIVITY --
+        rerun.set(rerun() + 1)
+        # ----------------
+
+    @reactive.effect()
+    @reactive.event(input.fs, input.grid_res, input.nfft, ignore_init=True)
+    def update_fieldParams():
+
+        instances = Src_inst.get_instances(Src_inst.list_instances())
+        X, Y, _, _ = define_grid()
+
+        for ii, hp in enumerate(instances):
+            hp.fs = input.fs()
+            hp.n_fft = int(input.nfft())
+            hp.azim_v = X.flatten()
+            hp.elev_v = Y.flatten()
+
+        # -- REACTIVITY --
+        rerun.set(rerun() + 1)
+        # ----------------
+
+    @reactive.calc()
+    def compute_field():
+        # ---- TRIGER ----
+        New_inst()
+        Del_sources()
+        rerun()
+        # ----------------
+
+        instances = Src_inst.get_instances(Src_inst.list_instances())
+
         Src_datas = [
             hp.resp_for_f(
                 freq=input.target_freq(),
                 reshape=True,
                 storedArgs=Src_inst.Stored.iloc[ii],
+                FieldSettings=Src_inst.FieldSettings,
             )
             for ii, hp in enumerate(instances)
         ]
         data = sum(Src_datas)
+
         return data
 
-    @reactive.effect()
-    @reactive.event(input.confirm_delete, ignore_init=True)
-    def del_source():
-        _id = input.DelID()
-        Src_inst.remove_instance(_id)
-        ui.update_text(
-            id="DelID", label="Source to delete", placeholder="ID of source", value=""
+    @reactive.calc()
+    def compute_pos():
+        # ---- TRIGER ----
+        New_inst()
+        Del_sources()
+        rerun()
+        # ----------------
+
+        instances = Src_inst.get_instances(Src_inst.list_instances())
+        Src_datas = [
+            hp.resp_for_M(
+                target_pos=target_pos.get(),
+                storedArgs=Src_inst.Stored.iloc[ii],
+                FieldSettings=Src_inst.FieldSettings,
+            )
+            for ii, hp in enumerate(instances)
+        ]
+        data = sum(Src_datas)
+        p_axis.set(np.mean(SpatialObject._Lp(data)))
+
+        return data
+
+    @output
+    @render.ui
+    @reactive.event(p_axis)
+    def pressure_axis_box():
+        return ui.value_box(
+            "Pressure in axis at 1m",
+            f"{p_axis():.1f} dB SPL",
+            output_widget("plot_OV_axis"),
+            id="pAxisBox",
+            showcase=sound_pressureIcon,
+            theme="bg-orange",
+            showcase_layout="top right",
         )
-        attributes_changed.set(attributes_changed() + 1)
-        Del_sources.set(Del_sources() + 1)
 
     @render_widget
     @reactive.event(
         input.create_instance,
         input.confirm_delete,
         input.target_freq,
+        input.darkmode,
+        input.nfft,
+        input.grid_res,
+        input.fs,
         Attribute_dict["orientation"],
         Attribute_dict["x"],
         Attribute_dict["y"],
+        Attribute_dict["delay"],
         ignore_init=True,
     )
     def plot_field():
         if New_inst.get() == 0:
             return
-        data = compute_field()
 
+        data = compute_field()
         _, _, x, y = define_grid()
+
         # Once the plotting will be clean -> function to do contour plot inside graphing.py
         if isinstance(data, (list, np.ndarray)):
             fig = go.Figure()
@@ -267,30 +427,97 @@ def server(input, output, session):
                     zmin=50,
                 )
             )
-            xS, yS, Infos = get_source_info()
+
+            xS, yS, Infos = (
+                get_source_info()
+            )  # Should change using reactive value instead ?
 
             fig.add_trace(
                 go.Scatter(
-                    x=xS, y=yS, hovertext=Infos, hoverinfo="text", mode="markers"
+                    x=xS,
+                    y=yS,
+                    hovertext=Infos,
+                    hoverinfo="text",
+                    mode="markers",
                 )
             )
             fig.update_layout(
                 xaxis=dict(
                     range=[x.min(), x.max()],
-                    # scaleanchor="x",
-                    # scaleratio=1,
-                    # constrain="domain",
                 ),
                 yaxis=dict(
                     range=[y.min(), y.max()],
-                    # scaleanchor="x",
-                    # scaleratio=1,
-                    # constrain="domain",
                 ),
                 margin=dict(l=30, b=30),
             )
-            # Should change using reactive value instead
+
+            if input.darkmode() == "dark":
+                fig.update_layout(
+                    paper_bgcolor="#1D1F21",
+                    plot_bgcolor="#1D1F21",
+                )
             # Params to twick : labelfont(color), coloring("heatmap","lines","fill"), .. colorscale
+            widget2 = go.FigureWidget(fig.data, fig.layout)
+            return widget2
+        else:
+            return
+
+    @render_widget
+    @reactive.event(
+        input.create_instance,
+        input.confirm_delete,
+        input.target_freq,
+        input.darkmode,
+        input.nfft,
+        input.grid_res,
+        input.fs,
+        Attribute_dict["orientation"],
+        Attribute_dict["x"],
+        Attribute_dict["y"],
+        Attribute_dict["delay"],
+        ignore_init=True,
+    )
+    def plot_OV_axis():
+        if New_inst.get() == 0:
+            return
+
+        data = compute_pos()
+        # return
+
+        if isinstance(data, (list, np.ndarray)):
+            instances = Src_inst.get_instances(Src_inst.list_instances())
+            xf = instances[0].xaxis_v
+            fig = go.Figure()
+
+            fig.add_trace(
+                go.Scatter(
+                    x=xf,
+                    y=SpatialObject._Lp(data),
+                    mode="lines",
+                    line=dict(color="white"),
+                )
+            )
+            fig.update_layout(
+                height=150,
+                width=200,
+                margin=dict(l=30, b=30),
+                xaxis=dict(
+                    range=[xf.min(), xf.max()],
+                    showgrid=False,
+                    zeroline=False,
+                    minor=dict(showgrid=False),
+                    showline=False,
+                ),
+                yaxis=dict(
+                    tickformat=".0f",
+                    showgrid=False,
+                    zeroline=False,
+                    minor=dict(showgrid=False),
+                    showline=False,
+                ),
+                paper_bgcolor="#F45100",
+                plot_bgcolor="#F45100",
+            )
             widget = go.FigureWidget(fig.data, fig.layout)
             return widget
         else:
@@ -298,7 +525,9 @@ def server(input, output, session):
 
     @render.data_frame
     def instance_table():
+        # ---- TRIGER ----
         attributes_changed()
+        # ----------------
         return render.DataTable(
             Src_inst.attributes,
             editable=True,

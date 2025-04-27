@@ -61,11 +61,12 @@ class SpatialObject:
         params = {
             "c": 343,
             "rho": 1.21,
-            "n_fft": 1024,
+            "n_fft": 128,
             "DIM": 3,
             "deg": False,
             "freq": None,
             "norm_s": "spherical_1",
+            "delay": 0,
         }
         params.update(kwargs)
 
@@ -75,6 +76,7 @@ class SpatialObject:
         self.n_fft = params["n_fft"]
         self.DIM = params["DIM"]
         self.deg = params["deg"]
+        self.delay = params["delay"]
 
         if dist_v is None:
             dist_v = np.array([0.0])
@@ -131,6 +133,7 @@ class SpatialObject:
         self.resp_computed = False
         self.Q = None
         self.respF = None
+        self.respM = None
 
     @staticmethod
     def _Lp(data):
@@ -141,6 +144,7 @@ class SpatialObject:
         """
         method to get the pressure at a specific point in the grid
         data has to have the shape (len(x),len(y))
+        not sure
         """
         idx_x = np.argmin(np.abs(x - Mx))
         idx_y = np.argmin(np.abs(y - My))
@@ -149,11 +153,10 @@ class SpatialObject:
     def freq_range(self, fmin, fmax):
         pass
 
-    def verifArgs(self, storedArgs):
+    def verifArgs(self, storedArgs, FieldSettings):
         """
         TODO: add more args to verify
         """
-        print([])
         if self.orientation_v[0] != storedArgs["orientation"]:
             print("orientation diff")
             return True
@@ -164,8 +167,20 @@ class SpatialObject:
             or self.position_v[1] != storedArgs["y"]
         ):
             return True
+        elif self.delay != storedArgs["delay"]:
+            return True
+        elif len(self.azim_v) != FieldSettings["grid_length"]:
+            self.set_directivity(self.directed)
+            return True
+        elif self.n_fft != FieldSettings["nfft"]:
+            self.time2freq()
+            self.set_directivity(self.directed)
+            return True
+        elif self.fs != FieldSettings["fs"]:
+            self.time2freq()
+            self.set_directivity(self.directed)
+            return True
         else:
-            print("no diff")
             return False
 
     def _Sresp(self, freq=None):
@@ -222,14 +237,15 @@ class SpatialObject:
         if num_freq_n is not None:
             if np.mod(num_freq_n, 2) == 0:
                 num_freq_n += 1
+                self.n_fft = (num_freq_n - 1) * 2
         # CONVERT
         if self.src_domain == "time":
             if num_freq_n is None:
-                num_freq_n = self.data_m.shape[1] // 2
+                num_freq_n = self.n_fft
                 num_freq_n += 1 - np.mod(num_freq_n, 2)
             self.src_domain = "freq"
-            self.n_fft = (num_freq_n - 1) * 2
-            self.data_m = spt.time2freq(self.data_m.T, nb_fft=self.n_fft).T
+            n_fft = (num_freq_n - 1) * 2
+            self.data_m = spt.time2freq(self.data_m.T, nb_fft=n_fft).T
         elif self.src_domain == "freq":
             if self.data_m.shape[1] is not None or self.data_m.shape[1] != num_freq_n:
                 self.freq2time()
@@ -306,7 +322,7 @@ class SpatialObject:
             print("get_grid: Unknown coordinates norm %s" % norm_s)
         grid = st.Grid(norm_s=self.norm_s, coords_m=tmp_m, DIM=self.DIM, deg=self.deg)
 
-        if any(pos != 0 for pos in self.position_v) and not self.directed:
+        if any(pos != 0 for pos in self.position_v) and self.directed is None:
             # Offset the grid to account for the position of the source
             if self.norm_s == "cartesian":
                 grid.coords_m = grid.coords_m - np.array(self.position_v)
@@ -336,7 +352,7 @@ class SpatialObject:
             if self.src_domain == "time":
                 self.time2freq()
                 self.src_domain = "freq"
-            self.pattern = np.ones_like(self.data_m)
+            self.pattern = np.ones((len(self.azim_v), self.n_fft + 1))
             self.directed = "monopole"
         else:
             print("set_directivity: Unknown method %s" % method)
@@ -375,10 +391,15 @@ class SpatialObject:
         # GET TARGET DIRECTION
         # assert self.directed is not None, "Directivity already set"
         if self.DIM == 2:
-            print("choosing bessel dir")
             xy_trg_v = st.pol2cart(1.0, self.orientation_v[0], deg=self.deg)
             hp_grid = self.get_grid("spherical_1")
-            angle = hp_grid.coords_m[:, 1] - np.deg2rad(self.orientation_v[0])
+            if self.deg:
+                coords_t = np.deg2rad(hp_grid.coords_m[:, 1])
+            else:
+                coords_t = hp_grid.coords_m[:, 1]
+
+            angle = coords_t - np.deg2rad(self.orientation_v[0])
+
             if self.src_domain == "time":
                 self.time2freq()
             k_v = 2 * np.pi * (np.abs(self.xaxis_v) + 1e-9) / self.c
@@ -389,6 +410,7 @@ class SpatialObject:
             )
             self.pattern = (2 * ssp.j1(tmp_m + 1e-9) / (tmp_m + 1e-9)) * 2
             self.directed = "bessel"
+
             return
         else:
             xy_trg_v = st.sph2cart(
@@ -516,6 +538,7 @@ class SpatialObject:
         freq: float = 1000,
         reshape=True,
         storedArgs=None,
+        FieldSettings=None,
         forcedCompute=False,
     ):
         """
@@ -536,13 +559,12 @@ class SpatialObject:
 
         """
         if storedArgs is not None:
-            forcedCompute = self.verifArgs(storedArgs)
-        print("resp for f : f = ", freq)
+            forcedCompute = self.verifArgs(storedArgs, FieldSettings)
+
         if hp_grid is None:
             hp_grid = self.get_grid("cartesian")
 
         if self.respF and self.respF == freq and not forcedCompute:
-            print("no recompute")
             return self.dataF
 
         if self.src_domain == "time":
@@ -552,13 +574,12 @@ class SpatialObject:
         rel_pos = hp_grid.coords_m - np.asarray(self.position_v)
         dist = np.linalg.norm(rel_pos, axis=1)
         delay = dist / self.c
-        print(np.min(np.abs(self.xaxis_v - freq)))
+
         omega = 2 * np.pi * freq
         self.dataF = self._Sresp(freq) * self.pattern[
             :, np.argmin(np.abs(self.xaxis_v - freq))
         ].astype(complex)
-
-        phase = -1j * omega * delay
+        phase = -1j * omega * (delay + self.delay)
         self.dataF *= 1j * self.rho * np.exp(phase)
         self.dataF /= dist * 4 * np.pi
         self.respF = freq
@@ -568,11 +589,43 @@ class SpatialObject:
 
         return self.dataF
 
-    def resp_for_M(self):
+    def resp_for_M(
+        self,
+        hp_grid=None,
+        target_pos=None,
+        storedArgs=None,
+        FieldSettings=None,
+        forcedCompute=False,
+    ):
         """
         Compute the response of the source on its frequency range for a specific point on the grid.
         """
-        pass
+        if storedArgs is not None:
+            forcedCompute = self.verifArgs(storedArgs, FieldSettings)
+
+        if hp_grid is None:
+            hp_grid = self.get_grid("cartesian")
+
+        if self.respM and np.all(self.respM == target_pos) and not forcedCompute:
+            return self.dataM
+
+        if self.src_domain == "time":
+            print("Compute response: Convert time to freq")
+            self.time2freq()
+        mic_pos, pos_idx, _ = hp_grid.find_pos(target_pos)
+
+        rel_pos = mic_pos - np.asarray(self.position_v)
+        dist = np.linalg.norm(rel_pos)
+        delay = dist / self.c
+
+        omega = 2 * np.pi * self.xaxis_v
+        self.dataM = self._Sresp() * self.pattern[pos_idx, :].astype(complex)
+        phase = -1j * omega * (delay + self.delay)
+        self.dataM *= 1j * self.rho * np.exp(phase)
+        self.dataM /= dist * 4 * np.pi
+        self.respM = target_pos
+
+        return self.dataM
 
     def enclosure(self, TL=None, dB=True, **kwargs):
         """

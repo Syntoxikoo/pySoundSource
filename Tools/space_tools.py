@@ -197,6 +197,29 @@ class Grid:
         """Returns the current coordinate system identifier"""
         return self.norm_s
 
+    def find_pos(self, point=None):
+        """
+        Find the closest grid point to the given (x,y) coordinates
+
+        """
+
+        grid_t = copy.deepcopy(self)
+
+        if self.norm_s != "cartesian":
+            grid_copy.convert_coordinates(new_norm_s="cartesian")
+
+        if point == None:
+            point = [0, 0]
+
+        distances = np.sqrt(
+            (grid_t.coords_m[:, 0] - point[0]) ** 2
+            + (grid_t.coords_m[:, 1] - point[1]) ** 2
+        )
+        idx = np.argmin(distances)
+
+        # Return closest point, its index, and the distance
+        return self.coords_m[idx], idx, distances[idx]
+
     # ------------------------------------------------------------------------------------------------------------------
     # ------------------ METHODS ---------------------------------------------------------------------------------------
     def convert_coordinates(self, new_norm_s):

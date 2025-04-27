@@ -66,6 +66,8 @@ fig.show()
 
 
 # ax.scatter(hp_grid.coords_m[:,0], hp_grid.coords_m[:,1], c=20*np.log10(abs(p)/2e-5), cmap='viridis')
+
+
 # ax.set_xlabel("x")
 # ax.set_ylabel("y")
 

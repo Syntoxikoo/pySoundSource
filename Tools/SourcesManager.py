@@ -20,8 +20,10 @@ class SourcesManager:
                 "radius",
                 "fmin",
                 "fmax",
+                "delay",
             ]
         )
+        self.FieldSettings = {}
 
     def create_instance(self, _id, class_name, *args, **kwargs):
         """
@@ -37,7 +39,9 @@ class SourcesManager:
         Returns:
             The created instance
         """
+
         instance = class_name(*args, **kwargs)
+
         self.instances[_id] = instance
 
         if not self.instances[_id].directed:
@@ -53,8 +57,15 @@ class SourcesManager:
             kwargs["radius"],
             kwargs.get("fmin", 20),
             kwargs.get("fmax", 20000),
+            kwargs["delay"],
         ]
         self.Stored = self.attributes.copy()
+        self.FieldSettings = {
+            "grid_length": len(kwargs["azim_v"]),
+            "nfft": kwargs["n_fft"],
+            "fs": kwargs["fs"],
+        }
+
         return instance
 
     def get_instance(self, _id):
