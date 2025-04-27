@@ -5,11 +5,10 @@ from Tools.SourcesManager import SourcesManager
 from Tools.SpatialObject import SpatialObject
 import plotly.graph_objects as go
 import plotly.io as pio
-import pandas as pd
 import Tools.graphing.mpl_template
 import numpy as np
 from pathlib import Path
-from icon import *
+from Tools.icon_script import *
 
 pio.templates.default = "ECS"
 
