@@ -1,0 +1,7 @@
+numpy==2.2.5
+pandas==2.2.3
+plotly==5.22.0
+scipy==1.15.2
+shiny==1.2.1
+shinywidgets==0.5.1
+tools==0.1.9
