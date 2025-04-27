@@ -103,9 +103,19 @@ app_ui = ui.page_fluid(
                 open=False,
             ),
             ui.card(
-                ui.input_action_button("create_instance", "New Source"),
+                ui.input_action_button(
+                    "create_instance",
+                    "New Source",
+                    icon=instanceIcon,
+                    class_="d-flex justify-content-between align-items-center",
+                ),
                 ui.popover(
-                    ui.input_action_button("del_instance", "Delete Source"),
+                    ui.input_action_button(
+                        "del_instance",
+                        "Delete Source",
+                        icon=DelInstanceIcon,
+                        class_="d-flex justify-content-between align-items-center",
+                    ),
                     ui.p(
                         "Select the source you whant to delete (helper: click on the ID of the source you want to delete)"
                     ),
@@ -141,19 +151,11 @@ app_ui = ui.page_fluid(
             ),
             ui.card(
                 ui.output_ui("pressure_axis_box"),
-                # ui.value_box(
-                #     "Pressure in axis at 1m",
-                #     f"{0} dB SPL",
-                #     output_widget("plot_OV_axis"),
-                #     showcase=sound_pressureIcon,
-                #     id="pAxisBox",
-                #     theme="bg-orange",
-                #     showcase_layout="top right",
-                # ),
                 ui.value_box(
-                    "Mean pressure in the listening zone",
-                    0,
-                    showcase=sound_pressureIcon,
+                    "Happy Birthday",
+                    f"{20} years",
+                    "Ruben <3",
+                    showcase=birthdayIcon,
                     theme="bg-gradient-blue-purple",
                     showcase_layout="top right",
                 ),
@@ -181,7 +183,7 @@ def server(input, output, session):
 
     attributes_changed = reactive.Value(0)
     rerun = reactive.Value(0)
-    target_pos = reactive.Value([1, 0])
+    target_pos = reactive.Value([3, 0])
     Del_sources = reactive.Value(0)
     p_axis = reactive.Value(0)
 
@@ -439,6 +441,23 @@ def server(input, output, session):
                     hovertext=Infos,
                     hoverinfo="text",
                     mode="markers",
+                    showlegend=False,
+                )
+            )
+            micInfo = " <b>Mic in axis</b>"
+
+            fig.add_trace(
+                go.Scatter(
+                    x=np.array(target_pos.get()[0]),
+                    y=np.array(target_pos.get()[1]),
+                    hovertext=micInfo,
+                    hoverinfo="text",
+                    mode="markers",
+                    marker_symbol="circle-x",
+                    marker_line_color="#F45100",
+                    marker_color=None,
+                    marker_line_width=2,
+                    showlegend=False,
                 )
             )
             fig.update_layout(
@@ -495,14 +514,16 @@ def server(input, output, session):
                     y=SpatialObject._Lp(data),
                     mode="lines",
                     line=dict(color="white"),
+                    hovertemplate="%{y:.1f} dB" + "<extra></extra>",
                 )
             )
             fig.update_layout(
+                hovermode="x",
                 height=150,
                 width=200,
                 margin=dict(l=30, b=30),
                 xaxis=dict(
-                    range=[xf.min(), xf.max()],
+                    type="log",
                     showgrid=False,
                     zeroline=False,
                     minor=dict(showgrid=False),
@@ -510,6 +531,7 @@ def server(input, output, session):
                 ),
                 yaxis=dict(
                     tickformat=".0f",
+                    range=([p_axis.get() - 40, p_axis.get() + 10]),
                     showgrid=False,
                     zeroline=False,
                     minor=dict(showgrid=False),
@@ -532,7 +554,7 @@ def server(input, output, session):
             Src_inst.attributes,
             editable=True,
             selection_mode="row",
-            height="200px",
+            height="130px",
         )
 
     @instance_table.set_patch_fn
