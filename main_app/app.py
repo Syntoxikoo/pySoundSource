@@ -318,11 +318,19 @@ def server(input, output, session):
         # ----------------
 
     @reactive.effect()
-    @reactive.event(input.fs, input.grid_res, input.nfft, ignore_init=True)
+    @reactive.event(
+        input.fs,
+        input.grid_res,
+        input.nfft,
+        input.x_length,
+        input.y_length,
+        ignore_init=True,
+    )
     def update_fieldParams():
 
         instances = Src_inst.get_instances(Src_inst.list_instances())
         X, Y, _, _ = define_grid()
+        print(input.y_length.get())
 
         for ii, hp in enumerate(instances):
             hp.fs = input.fs()
@@ -402,6 +410,8 @@ def server(input, output, session):
         input.nfft,
         input.grid_res,
         input.fs,
+        input.x_length,
+        input.y_length,
         Attribute_dict["orientation"],
         Attribute_dict["x"],
         Attribute_dict["y"],
@@ -489,6 +499,8 @@ def server(input, output, session):
         input.nfft,
         input.grid_res,
         input.fs,
+        input.x_length,
+        input.y_length,
         Attribute_dict["orientation"],
         Attribute_dict["x"],
         Attribute_dict["y"],
