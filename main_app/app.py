@@ -9,6 +9,7 @@ import Tools.graphing.mpl_template
 import numpy as np
 from pathlib import Path
 from Tools.icon_script import *
+from scipy import signal
 
 pio.templates.default = "ECS"
 
@@ -97,6 +98,14 @@ app_ui = ui.page_fluid(
                         max=20,
                         step=0.1,
                     ),
+                    ui.input_slider(
+                        "set_f_range",
+                        label="range",
+                        min=20,
+                        value=[20, 20000],
+                        max=20000,
+                        step=1,
+                    ),
                 ),
                 multiple=False,
                 open=False,
@@ -149,7 +158,6 @@ app_ui = ui.page_fluid(
                 max_height=600,
             ),
             ui.card(
-                ui.output_ui("pressure_axis_box"),
                 ui.value_box(
                     "Happy Birthday",
                     f"{20} years",
@@ -158,8 +166,9 @@ app_ui = ui.page_fluid(
                     theme="bg-gradient-blue-purple",
                     showcase_layout="top right",
                 ),
-                fill=False,
                 # class_="displayfield-card",
+                ui.output_ui("pressure_axis_box"),
+                fill=False,
             ),
             col_widths=[7, 5],
             fixed_width=True,
@@ -366,6 +375,11 @@ def server(input, output, session):
         return data
 
     @reactive.calc()
+    @reactive.event(input.set_f_range, ignore_init=True)
+    def compute_filter():
+        pass
+
+    @reactive.calc()
     def compute_pos():
         # ---- TRIGER ----
         New_inst()
@@ -392,7 +406,7 @@ def server(input, output, session):
     @reactive.event(p_axis)
     def pressure_axis_box():
         return ui.value_box(
-            "Pressure in axis at 1m",
+            "Pressure in axis at 3m",
             f"{p_axis():.1f} dB SPL",
             output_widget("plot_OV_axis"),
             id="pAxisBox",
@@ -477,6 +491,8 @@ def server(input, output, session):
                     range=[y.min(), y.max()],
                 ),
                 margin=dict(l=30, b=30),
+                height=580,
+                width=580,
             )
 
             if input.darkmode() == "dark":

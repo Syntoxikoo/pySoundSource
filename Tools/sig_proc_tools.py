@@ -4,6 +4,7 @@ import numpy as np
 import copy
 from scipy.fft import rfft, irfft, rfftfreq
 import scipy.signal as ssi
+import math
 
 
 def freq2time(fft_inp, norm_b=True):
@@ -33,8 +34,25 @@ def time2freq(frm_inp, nb_fft=None, norm_b=True, fs=None):
 
 
 def mag2db(mag):
-    db = 20 * np.log10(np.abs(mag) + np.finfo(float).eps)
-    return db
+    if isinstance(mag, (list, np.ndarray)):
+        return 20 * np.log10(np.abs(mag) + np.finfo(float).eps)
+    else:
+        if mag == 0:
+            return float("-inf")
+        else:
+            return 20 * math.log10(mag)
+
+
+def mag_to_db(mag):
+    if type(mag) is list:
+        return list(map(mag_to_db, mag))
+    elif type(mag) is np.ndarray:
+        return np.array(list(map(mag_to_db, mag)))
+    else:
+        if mag == 0:
+            return float("-inf")
+        else:
+            return 20 * math.log10(mag)
 
 
 def db2mag(db):

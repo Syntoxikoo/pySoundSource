@@ -64,7 +64,7 @@ class SpatialObject:
             "n_fft": 128,
             "DIM": 3,
             "deg": False,
-            "freq": None,
+            "freq_range": [20, 20000],
             "norm_s": "spherical_1",
             "delay": 0,
         }
@@ -150,8 +150,11 @@ class SpatialObject:
         idx_y = np.argmin(np.abs(y - My))
         return data[idx_x, idx_y]
 
-    def freq_range(self, fmin, fmax):
-        pass
+    def filts(self, h):
+        """
+        Setting the filter FRF
+        """
+        self._filts = h
 
     def verifArgs(self, storedArgs, FieldSettings):
         """
@@ -187,6 +190,7 @@ class SpatialObject:
         """
         TODO : still not sure if should put the freq or the frequency bin
         """
+
         if self.Q is not None:
             if self.src_domain == "time":
                 print("SpatObj: _Sresp: Convert time to freq")
@@ -200,10 +204,15 @@ class SpatialObject:
                 )
             else:
                 Sresp = 1j * self.rho * (2 * np.pi * self.xaxis_v) * self.Q
-
-            return Sresp
+            if hasattr(self, "_filts"):
+                return Sresp * self._filts
+            else:
+                return Sresp
         else:
-            return 1.0
+            if hasattr(self, "_filts"):
+                return self._filts
+            else:
+                return 1.0
 
     def update_xaxis(self):
         """
