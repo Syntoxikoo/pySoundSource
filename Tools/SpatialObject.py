@@ -119,7 +119,7 @@ class SpatialObject:
         self.dist_v = dist_v
         self.data_m = data_m
         self.xaxis_v = np.linspace(
-            0, self.data_m.shape[1], self.data_m.shape[1]
+            0, self.n_fft + 1, self.n_fft + 1
         )  # time axis or freq axis
         self.src_resp = src_resp
         if self.DIM == 2:
@@ -219,7 +219,7 @@ class SpatialObject:
         Update the time axis or freq axis according to the data type
         Useful for plot data
         """
-        num_sample_n = self.data_m.shape[1]
+        num_sample_n = self.n_fft + 1
 
         if self.src_domain == "time":
             self.xaxis_v = np.linspace(
@@ -624,14 +624,20 @@ class SpatialObject:
         mic_pos, pos_idx, _ = hp_grid.find_pos(target_pos)
 
         rel_pos = mic_pos - np.asarray(self.position_v)
+        if all(rel_pos == 0):
+            print(
+                "WARNING : source and mic are at the exact same position, grid idxs:",
+                pos_idx,
+            )
         dist = np.linalg.norm(rel_pos)
         delay = dist / self.c
 
         omega = 2 * np.pi * self.xaxis_v
         self.dataM = self._Sresp() * self.pattern[pos_idx, :].astype(complex)
         phase = -1j * omega * (delay + self.delay)
+
         self.dataM *= 1j * self.rho * np.exp(phase)
-        self.dataM /= dist * 4 * np.pi
+        self.dataM /= dist * 4 * np.pi + 1e-10
         self.respM = target_pos
 
         return self.dataM
